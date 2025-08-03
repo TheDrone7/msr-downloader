@@ -36,3 +36,15 @@ pub async fn ensure_dir_exists<P: AsRef<Path>>(path: P) -> crate::Result<()> {
     tokio::fs::create_dir_all(path).await?;
     Ok(())
 }
+
+pub fn format_album_name(name: &str) -> String {
+    format!("\x1b[38;2;249;226;175m{}\x1b[0m", name)
+}
+
+pub fn format_success_message(message: &str) -> String {
+    format!("\x1b[38;2;166;227;161m{}\x1b[0m", message)
+}
+
+pub fn format_failure_message(message: &str) -> String {
+    format!("\x1b[38;2;243;139;168m{}\x1b[0m", message)
+}

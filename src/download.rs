@@ -55,10 +55,11 @@ impl Downloader {
                     album
                 }
                 None => {
-                    self.progress.println(&format!(
-                        "⚠️  Cannot get details for album: [{}] {}",
-                        album_basic.cid, album_basic.name
-                    ));
+                    self.progress
+                        .println(&utils::format_failure_message(&format!(
+                            "⚠️  Cannot get details for album: [{}] {}",
+                            album_basic.cid, album_basic.name
+                        )));
                     main_progress.inc(1);
                     continue;
                 }
@@ -70,8 +71,10 @@ impl Downloader {
                 ..album
             };
 
-            self.progress
-                .set_pinned_message(&format!("Downloading album: 《{}》", album_with_songs.name));
+            self.progress.set_pinned_message(&format!(
+                "{}: downloading album tracks",
+                utils::format_album_name(&album_with_songs.name)
+            ));
 
             let album_dir_name = format!("{:03} - {}", album_no, album_with_songs.sanitized_name());
             let album_path = self.save_path.join(album_dir_name);
@@ -86,11 +89,15 @@ impl Downloader {
                 .await?;
 
             self.progress
-                .println(&format!("✅  《{}》", album_with_songs.name));
+                .println(&utils::format_success_message(&format!(
+                    "✅  {}",
+                    utils::format_album_name(&album_with_songs.name)
+                )));
             main_progress.inc(1);
         }
 
         main_progress.finish_with_message("Download completed!");
+        self.progress.remove_progress_bar(&main_progress);
         Ok(())
     }
 
@@ -103,14 +110,18 @@ impl Downloader {
                 Ok(Some(detailed_song)) => detailed_songs.push(detailed_song),
                 Ok(None) => {
                     self.progress
-                        .println(&format!("⚠️  Song not found: {}", song.name));
+                        .println(&utils::format_failure_message(&format!(
+                            "⚠️  Song not found: {}",
+                            song.name
+                        )));
                     detailed_songs.push(song);
                 }
                 Err(e) => {
-                    self.progress.println(&format!(
-                        "⚠️  Failed to get song details for {}: {}",
-                        song.name, e
-                    ));
+                    self.progress
+                        .println(&utils::format_failure_message(&format!(
+                            "⚠️  Failed to get song details for {}: {}",
+                            song.name, e
+                        )));
                     detailed_songs.push(song);
                 }
             }
@@ -182,8 +193,8 @@ impl Downloader {
         let song_progress = self.progress.create_progress_bar(
             valid_songs.len() as u64,
             &format!(
-                "Downloading album: 《{}》 ({} tracks)",
-                album.name,
+                "{}: downloading {} tracks",
+                utils::format_album_name(&album.name),
                 valid_songs.len()
             ),
         );
@@ -198,6 +209,7 @@ impl Downloader {
             .await;
 
         song_progress.finish_with_message("Track downloads completed");
+        self.progress.remove_progress_bar(&song_progress);
         Ok(())
     }
 
@@ -228,16 +240,20 @@ impl Downloader {
 
     async fn download_album_covers(&self, album: &Album, album_path: &Path) -> Result<()> {
         if let Some(cover_url) = &album.cover_url {
-            self.progress
-                .set_pinned_message(&format!("Downloading album cover: 《{}》", album.name));
+            self.progress.set_pinned_message(&format!(
+                "{}: downloading album cover",
+                utils::format_album_name(&album.name)
+            ));
             let ext = utils::get_file_extension(cover_url).unwrap_or_else(|| ".jpg".to_string());
             let filename = format!("Album Cover{}", ext);
             self.download_file(cover_url, album_path, &filename).await?;
         }
 
         if let Some(cover_de_url) = &album.cover_de_url {
-            self.progress
-                .set_pinned_message(&format!("Downloading cover: 《{}》", album.name));
+            self.progress.set_pinned_message(&format!(
+                "{}: downloading detailed cover",
+                utils::format_album_name(&album.name)
+            ));
             let ext = utils::get_file_extension(cover_de_url).unwrap_or_else(|| ".jpg".to_string());
             let filename = format!("Cover{}", ext);
             self.download_file(cover_de_url, album_path, &filename)

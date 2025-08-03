@@ -23,6 +23,7 @@ impl ProgressTracker {
                 .progress_chars("#>-"),
         );
         pb.set_message(message.to_string());
+        pb.enable_steady_tick(std::time::Duration::from_millis(100));
         pb
     }
 
@@ -35,7 +36,12 @@ impl ProgressTracker {
                 .progress_chars("#>-"),
         );
         pb.set_message(format!("Downloading: {}", filename));
+        pb.enable_steady_tick(std::time::Duration::from_millis(100));
         pb
+    }
+
+    pub fn remove_progress_bar(&self, pb: &ProgressBar) {
+        self.multi_progress.remove(pb);
     }
 
     pub fn println(&self, message: &str) {
