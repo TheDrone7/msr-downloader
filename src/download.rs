@@ -1,6 +1,7 @@
 use crate::{
     Result,
     client::MonsterSirenClient,
+    metadata::MetadataWriter,
     models::{Album, Song},
     progress::ProgressTracker,
     utils,
@@ -9,12 +10,13 @@ use futures::stream::{self, StreamExt};
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 
-const SAVE_DIR: &str = "./monster-siren";
+const SAVE_DIR: &str = "./Monster Siren Records";
 const MAX_CONCURRENT_DOWNLOADS: usize = 5;
 
 pub struct Downloader {
     client: MonsterSirenClient,
     progress: ProgressTracker,
+    metadata_writer: MetadataWriter,
     save_path: PathBuf,
 }
 
@@ -23,6 +25,7 @@ impl Downloader {
         Self {
             client,
             progress: ProgressTracker::new(),
+            metadata_writer: MetadataWriter::new(),
             save_path: PathBuf::from(SAVE_DIR),
         }
     }
@@ -82,10 +85,13 @@ impl Downloader {
 
             self.save_album_info(&album_with_songs, &album_path).await?;
 
+            self.download_album_covers(&album_with_songs, &album_path)
+                .await?;
+
             self.download_album_songs(&album_with_songs, &album_path)
                 .await?;
 
-            self.download_album_covers(&album_with_songs, &album_path)
+            self.apply_metadata_to_songs(&album_with_songs, &album_path)
                 .await?;
 
             self.progress
@@ -213,6 +219,58 @@ impl Downloader {
         Ok(())
     }
 
+    async fn apply_metadata_to_songs(&self, album: &Album, album_path: &Path) -> Result<()> {
+        let songs = album.get_songs();
+        let valid_songs: Vec<_> = songs
+            .iter()
+            .enumerate()
+            .filter(|(_, song)| song.is_valid())
+            .collect();
+
+        if valid_songs.is_empty() {
+            return Ok(());
+        }
+
+        self.progress.set_pinned_message(&format!(
+            "{}: applying metadata to tracks",
+            utils::format_album_name(&album.name)
+        ));
+
+        let total_tracks = valid_songs.len();
+        let cover_path = self.find_album_cover(album_path);
+
+        for (index, song) in valid_songs {
+            let track_no = index + 1;
+            let song_name = song.sanitized_name();
+
+            if song.source_url.is_some() {
+                let ext = utils::get_file_extension(song.source_url.as_ref().unwrap())
+                    .unwrap_or_else(|| ".mp3".to_string());
+                let filename = format!("{:02}.{}{}", track_no, song_name, ext);
+                let file_path = album_path.join(&filename);
+
+                if utils::file_exists(&file_path) {
+                    if let Err(e) = self
+                        .metadata_writer
+                        .write_metadata(
+                            &file_path,
+                            song,
+                            album,
+                            track_no as u32,
+                            total_tracks as u32,
+                            cover_path.as_deref(),
+                        )
+                        .await
+                    {
+                        eprintln!("Failed to apply metadata to {}: {}", filename, e);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     async fn download_song(
         &self,
         song: &Song,
@@ -236,6 +294,23 @@ impl Downloader {
 
         progress.inc(1);
         Ok(())
+    }
+
+    fn find_album_cover(&self, album_path: &Path) -> Option<PathBuf> {
+        let cover_names = [
+            "Album Cover.jpg",
+            "Album Cover.png",
+            "Cover.jpg",
+            "Cover.png",
+        ];
+
+        for name in &cover_names {
+            let cover_path = album_path.join(name);
+            if utils::file_exists(&cover_path) {
+                return Some(cover_path);
+            }
+        }
+        None
     }
 
     async fn download_album_covers(&self, album: &Album, album_path: &Path) -> Result<()> {
